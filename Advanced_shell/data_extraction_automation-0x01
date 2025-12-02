@@ -1,22 +1,25 @@
 #!/bin/bash
 
-# Extract fields from data.json using jq
+# Ensure file exists and is not empty
+if [ ! -s "data.json" ]; then
+    echo "data.json not found or empty"
+    exit 1
+fi
+
+# Extract fields using jq
 name=$(jq -r '.name' data.json)
 height=$(jq -r '.height' data.json)
 weight=$(jq -r '.weight' data.json)
 type=$(jq -r '.types[0].type.name' data.json)
 
-# Convert height/weight from API units to meters/kg
-# Height is in decimeters → meters
-height_m=$(echo "$height" | awk '{printf "%.1f", $1 / 10}')
+# Convert height (decimeters → meters)
+formatted_height=$(echo "$height" | awk '{printf "%.1f", $1/10}')
 
-# Weight is in hectograms → kilograms
-weight_kg=$(echo "$weight" | awk '{printf "%.0f", $1 / 10}')
+# Convert weight (hectograms → kilograms)
+formatted_weight=$(echo "$weight" | awk '{printf "%.0f", $1/10}')
 
-# Capitalize type using sed (first letter uppercase)
-type_cap=$(echo "$type" | sed 's/./\U&/')
+# Capitalize type using sed
+type=$(echo "$type" | sed 's/^\(.\)/\U\1/')
 
-# Capitalize name (sometimes API returns lowercase)
-name_cap=$(echo "$name" | sed 's/./\U&/')
-
-echo "${name_cap} is of type ${type_cap}, weighs ${weight_kg}kg, and is ${height_m}m tall."
+# Final output
+echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall."
