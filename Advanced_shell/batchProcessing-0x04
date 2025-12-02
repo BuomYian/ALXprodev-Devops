@@ -30,6 +30,9 @@ mkdir -p "$OUTPUT_DIR"
 : > "$LOG_FILE"   # Clear previous errors
 : > "$PROCESS_LOG"  # Clear process log
 
+# Setup trap to cleanup on exit
+trap cleanup EXIT INT TERM
+
 echo "========================================"
 echo "Parallel Data Fetching - Task 4"
 echo "========================================"
@@ -72,6 +75,29 @@ fetch_pokemon() {
     echo -e "[PID: $pid] ${RED}✗ Failed to fetch data for $name after 3 attempts.${NC}" | tee -a "$PROCESS_LOG" "$LOG_FILE"
     rm -f "$output_file"  # Remove partial file
     return 1
+}
+
+#############################################################################
+# Function: Cleanup background processes on exit
+#############################################################################
+cleanup() {
+    echo ""
+    echo -e "${YELLOW}Cleaning up background processes...${NC}"
+    
+    # Kill any remaining background jobs
+    if [ $(jobs -r | wc -l) -gt 0 ]; then
+        echo "Terminating remaining background jobs..."
+        kill $(jobs -p) 2>/dev/null
+        sleep 1
+        
+        # Force kill if still running
+        if [ $(jobs -r | wc -l) -gt 0 ]; then
+            echo "Force killing remaining jobs..."
+            kill -9 $(jobs -p) 2>/dev/null
+        fi
+    fi
+    
+    jobs -l
 }
 
 #############################################################################
