@@ -1,0 +1,199 @@
+#!/bin/bash
+
+#############################################################################
+# Task 4: Parallel Data Fetching
+# Objective: Speed up data retrieval using parallel processing
+#
+# This script:
+# 1. Fetches Pokémon data in parallel using background processes
+# 2. Manages concurrent requests efficiently
+# 3. Waits for all processes to complete before moving to next step
+# 4. Handles process completion and error tracking
+#############################################################################
+
+# Configuration
+POKEMONS=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+OUTPUT_DIR="pokemon_data"
+LOG_FILE="errors.txt"
+PROCESS_LOG="process.log"
+MAX_PARALLEL=3  # Limit concurrent processes
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Initialize
+mkdir -p "$OUTPUT_DIR"
+: > "$LOG_FILE"   # Clear previous errors
+: > "$PROCESS_LOG"  # Clear process log
+
+echo "========================================"
+echo "Parallel Data Fetching - Task 4"
+echo "========================================"
+echo "Pokémon to fetch: ${POKEMONS[*]}"
+echo "Max parallel processes: $MAX_PARALLEL"
+echo "Output directory: $OUTPUT_DIR"
+echo ""
+
+#############################################################################
+# Function: Fetch a single Pokémon with retry logic
+#############################################################################
+fetch_pokemon() {
+    local name=$1
+    local pid=$$
+    local url="https://pokeapi.co/api/v2/pokemon/$name"
+    local output_file="$OUTPUT_DIR/${name}.json"
+
+    attempts=0
+    max_attempts=3
+
+    while [ $attempts -lt $max_attempts ]; do
+        echo "[PID: $pid] Fetching data for $name... (attempt $((attempts+1)))" | tee -a "$PROCESS_LOG"
+
+        # Perform API request
+        response=$(curl -s -w "%{http_code}" "$url" -o "$output_file" 2>&1)
+
+        http_code="${response:(-3)}"
+
+        if [ "$http_code" -eq 200 ]; then
+            echo -e "[PID: $pid] ${GREEN}✓ Saved data to $output_file${NC}" | tee -a "$PROCESS_LOG"
+            return 0
+        else
+            attempts=$((attempts+1))
+            echo "[PID: $pid] Request failed with status $http_code. Retrying..." | tee -a "$PROCESS_LOG"
+            sleep 1
+        fi
+    done
+
+    # If all attempts fail
+    echo -e "[PID: $pid] ${RED}✗ Failed to fetch data for $name after 3 attempts.${NC}" | tee -a "$PROCESS_LOG" "$LOG_FILE"
+    rm -f "$output_file"  # Remove partial file
+    return 1
+}
+
+#############################################################################
+# Function: Monitor and wait for background processes
+#############################################################################
+wait_for_processes() {
+    local pids=("$@")
+    local failed=0
+    local succeeded=0
+
+    echo ""
+    echo "Monitoring background processes..."
+    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+
+    for pid in "${pids[@]}"; do
+        if wait "$pid"; then
+            ((succeeded++))
+            echo -e "${GREEN}✓ Process $pid completed successfully${NC}"
+        else
+            ((failed++))
+            echo -e "${RED}✗ Process $pid failed${NC}"
+        fi
+    done
+
+    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+    echo "Summary: $succeeded succeeded, $failed failed"
+    
+    return $failed
+}
+
+#############################################################################
+# Parallel fetching with process management
+#############################################################################
+
+echo "Starting parallel data fetching..."
+echo -e "${BLUE}═══════════════════════════════════════${NC}"
+
+declare -a pids=()
+declare -a pokemon_list=()
+start_time=$(date +%s)
+
+# Launch background processes with concurrency control
+for pokemon in "${POKEMONS[@]}"; do
+    # Wait if we've reached max parallel processes
+    while [ ${#pids[@]} -ge $MAX_PARALLEL ]; do
+        # Check if any process has completed
+        for i in "${!pids[@]}"; do
+            if ! kill -0 "${pids[$i]}" 2>/dev/null; then
+                unset 'pids[$i]'
+            fi
+        done
+        # Reindex array
+        pids=("${pids[@]}")
+        sleep 0.5
+    done
+
+    # Start background process
+    fetch_pokemon "$pokemon" &
+    pids+=($!)
+    pokemon_list+=("$pokemon")
+
+    echo -e "${YELLOW}[STARTED]${NC} Process ${pids[-1]} for fetching $pokemon"
+done
+
+# Wait for all remaining processes
+echo ""
+echo "Waiting for all processes to complete..."
+wait_for_processes "${pids[@]}"
+wait_exit_code=$?
+
+end_time=$(date +%s)
+elapsed_time=$((end_time - start_time))
+
+#############################################################################
+# Verification and Summary
+#############################################################################
+
+echo ""
+echo "========================================"
+echo "Fetching Complete - Verification"
+echo "========================================"
+
+successful=0
+failed=0
+
+for pokemon in "${POKEMONS[@]}"; do
+    output_file="$OUTPUT_DIR/${pokemon}.json"
+    if [ -f "$output_file" ] && [ -s "$output_file" ]; then
+        size=$(wc -c < "$output_file")
+        echo -e "${GREEN}✓${NC} $pokemon - File exists ($size bytes)"
+        ((successful++))
+    else
+        echo -e "${RED}✗${NC} $pokemon - File missing or empty"
+        ((failed++))
+    fi
+done
+
+echo ""
+echo "========================================"
+echo "Final Summary"
+echo "========================================"
+echo "Total Pokémon requested: ${#POKEMONS[@]}"
+echo "Successfully fetched: $successful"
+echo "Failed fetches: $failed"
+echo "Total time elapsed: ${elapsed_time}s"
+echo "Max parallel processes: $MAX_PARALLEL"
+echo ""
+
+if [ $failed -eq 0 ]; then
+    echo -e "${GREEN}✓ All Pokémon data fetched successfully!${NC}"
+    echo ""
+    
+    # Display sample data
+    echo "Sample data from bulbasaur.json:"
+    if command -v jq &> /dev/null && [ -f "$OUTPUT_DIR/bulbasaur.json" ]; then
+        jq '.id, .name, .height, .weight' "$OUTPUT_DIR/bulbasaur.json" 2>/dev/null | head -4
+    fi
+    exit 0
+else
+    echo -e "${RED}✗ Some Pokémon data could not be fetched. Check $LOG_FILE for details.${NC}"
+    echo ""
+    echo "Errors logged:"
+    cat "$LOG_FILE"
+    exit 1
+fi

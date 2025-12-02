@@ -1,0 +1,10 @@
+[PID: 41110] Fetching data for bulbasaur... (attempt 1)
+[PID: 41110] Fetching data for ivysaur... (attempt 1)
+[PID: 41110] Fetching data for venusaur... (attempt 1)
+[PID: 41110] [0;32m✓ Saved data to pokemon_data/ivysaur.json[0m
+[PID: 41110] [0;32m✓ Saved data to pokemon_data/bulbasaur.json[0m
+[PID: 41110] Fetching data for charmander... (attempt 1)
+[PID: 41110] Fetching data for charmeleon... (attempt 1)
+[PID: 41110] [0;32m✓ Saved data to pokemon_data/venusaur.json[0m
+[PID: 41110] [0;32m✓ Saved data to pokemon_data/charmeleon.json[0m
+[PID: 41110] [0;32m✓ Saved data to pokemon_data/charmander.json[0m
