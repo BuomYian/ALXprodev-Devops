@@ -78,7 +78,6 @@ fetch_pokemon() {
 # Function: Monitor and wait for background processes
 #############################################################################
 wait_for_processes() {
-    local pids=("$@")
     local failed=0
     local succeeded=0
 
@@ -86,13 +85,31 @@ wait_for_processes() {
     echo "Monitoring background processes..."
     echo -e "${BLUE}═══════════════════════════════════════${NC}"
 
-    for pid in "${pids[@]}"; do
-        if wait "$pid"; then
+    # Display active jobs
+    echo "Active background jobs:"
+    jobs -l
+
+    # Wait for all background jobs to complete
+    while [ $(jobs -r | wc -l) -gt 0 ]; do
+        echo "Waiting for $(jobs -r | wc -l) jobs to complete..."
+        sleep 1
+    done
+
+    # Check job status using jobs command
+    echo ""
+    echo "Job completion status:"
+    if jobs &>/dev/null; then
+        jobs -l
+    fi
+
+    # Wait for all background processes
+    for job in $(jobs -p); do
+        if wait "$job" 2>/dev/null; then
             ((succeeded++))
-            echo -e "${GREEN}✓ Process $pid completed successfully${NC}"
+            echo -e "${GREEN}✓ Job $job completed successfully${NC}"
         else
             ((failed++))
-            echo -e "${RED}✗ Process $pid failed${NC}"
+            echo -e "${RED}✗ Job $job failed${NC}"
         fi
     done
 
@@ -109,37 +126,33 @@ wait_for_processes() {
 echo "Starting parallel data fetching..."
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
 
-declare -a pids=()
 declare -a pokemon_list=()
 start_time=$(date +%s)
 
-# Launch background processes with concurrency control
+# Launch background processes with concurrency control using jobs
 for pokemon in "${POKEMONS[@]}"; do
     # Wait if we've reached max parallel processes
-    while [ ${#pids[@]} -ge $MAX_PARALLEL ]; do
-        # Check if any process has completed
-        for i in "${!pids[@]}"; do
-            if ! kill -0 "${pids[$i]}" 2>/dev/null; then
-                unset 'pids[$i]'
-            fi
-        done
-        # Reindex array
-        pids=("${pids[@]}")
+    while [ $(jobs -r | wc -l) -ge $MAX_PARALLEL ]; do
+        echo "Waiting for available slot ($(jobs -r | wc -l) jobs running)..."
         sleep 0.5
     done
 
     # Start background process
     fetch_pokemon "$pokemon" &
-    pids+=($!)
     pokemon_list+=("$pokemon")
 
-    echo -e "${YELLOW}[STARTED]${NC} Process ${pids[-1]} for fetching $pokemon"
+    echo -e "${YELLOW}[STARTED]${NC} Job for fetching $pokemon (Total running jobs: $(jobs -r | wc -l))"
 done
+
+# Display all running jobs before waiting
+echo ""
+echo "All jobs started. Current background jobs:"
+jobs -l
 
 # Wait for all remaining processes
 echo ""
 echo "Waiting for all processes to complete..."
-wait_for_processes "${pids[@]}"
+wait_for_processes
 wait_exit_code=$?
 
 end_time=$(date +%s)
